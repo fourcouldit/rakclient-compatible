@@ -1,0 +1,59 @@
+name: Build RakClient - Old GLIBC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Install Docker
+        run: docker --version
+
+      - name: Build RakClient in old Linux environment
+        shell: bash
+        run: |
+          set -e
+
+          git clone --depth 1 https://github.com/Newmcpe/RakClient.git source
+
+          docker run --rm \
+            -v "$PWD/source:/work" \
+            -w /work \
+            quay.io/pypa/manylinux2014_x86_64 \
+            bash -lc '
+              set -e
+
+              yum install -y curl gcc gcc-c++ make git perl openssl-devel
+
+              curl --proto "=https" --tlsv1.2 -sSf \
+                https://sh.rustup.rs | sh -s -- -y
+
+              source "$HOME/.cargo/env"
+
+              rustc --version
+              cargo --version
+
+              cargo build --release -p app
+
+              echo "===== BINARY ====="
+              file target/release/rakclient
+
+              echo "===== GLIBC REQUIREMENTS ====="
+              strings target/release/rakclient | grep -o "GLIBC_[0-9.]*" | sort -Vu || true
+
+              mkdir -p /work/output
+              cp target/release/rakclient /work/output/rakclient
+            '
+
+      - name: Show result
+        run: |
+          ls -lh source/output/rakclient
+          file source/output/rakclient
+
+      - name: Upload RakClient
+        uses: actions/upload-artifact@v4
+        with:
+          name: rakclient-linux-x86_64-old-glibc
+          path: source/output/rakclient
