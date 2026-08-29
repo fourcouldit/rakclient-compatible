@@ -1,4 +1,4 @@
-name: Build RakClient Compatible
+name: Build RakClient Old GLIBC
 
 on:
   workflow_dispatch:
@@ -8,35 +8,56 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout RakClient
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
           repository: Newmcpe/RakClient
-          path: rakclient-source
+          path: source
 
-      - name: Remove developer-local patch
-        working-directory: rakclient-source
+      - name: Build inside old Linux environment
         run: |
-          sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
-          echo "Cargo.toml fixed:"
-          tail -20 Cargo.toml
+          docker run --rm \
+            -v "$PWD/source:/work" \
+            -w /work \
+            quay.io/pypa/manylinux2014_x86_64 \
+            bash -lc '
+              set -e
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+              yum install -y git curl gcc gcc-c++ make perl openssl-devel
 
-      - name: Build RakClient
-        working-directory: rakclient-source
+              sed -i "/^\[patch\.crates-io\]/,\$d" Cargo.toml
+
+              curl --proto "=https" --tlsv1.2 -sSf \
+                https://sh.rustup.rs | sh -s -- -y
+
+              source "$HOME/.cargo/env"
+
+              echo "===== BUILD ENVIRONMENT ====="
+              ldd --version | head -1
+              rustc --version
+
+              echo "===== BUILD ====="
+              cargo build --release -p app
+
+              echo "===== BINARY ====="
+              file target/release/rakclient
+
+              echo "===== GLIBC SYMBOLS ====="
+              strings target/release/rakclient |
+                grep -o "GLIBC_[0-9.]*" |
+                sort -Vu || true
+
+              mkdir -p /work/output
+              cp target/release/rakclient /work/output/rakclient
+            '
+
+      - name: Verify artifact
         run: |
-          cargo build --release -p app
+          ls -lh source/output/rakclient
+          file source/output/rakclient
 
-      - name: Check binary
-        working-directory: rakclient-source
-        run: |
-          file target/release/rakclient
-          strings target/release/rakclient | grep -o 'GLIBC_[0-9.]*' | sort -Vu || true
-
-      - name: Upload RakClient
+      - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: rakclient-linux-x86_64
-          path: rakclient-source/target/release/rakclient
+          name: rakclient-linux-x86_64-old-glibc
+          path: source/output/rakclient
