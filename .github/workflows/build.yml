@@ -10,20 +10,27 @@ jobs:
     steps:
       - name: Checkout RakClient
         uses: actions/checkout@v4
+        with:
+          repository: Newmcpe/RakClient
+          path: rakclient-source
 
       - name: Remove developer-local patch
+        working-directory: rakclient-source
         run: |
-          sed -i '/^\[patch\.crates-io\]/,/^$/d' Cargo.toml
-          grep -n "rerecast\|patch.crates" Cargo.toml || true
+          sed -i '/^\[patch\.crates-io\]/,$d' Cargo.toml
+          echo "Cargo.toml fixed:"
+          tail -20 Cargo.toml
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build RakClient
+        working-directory: rakclient-source
         run: |
           cargo build --release -p app
 
       - name: Check binary
+        working-directory: rakclient-source
         run: |
           file target/release/rakclient
           strings target/release/rakclient | grep -o 'GLIBC_[0-9.]*' | sort -Vu || true
@@ -32,4 +39,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rakclient-linux-x86_64
-          path: target/release/rakclient
+          path: rakclient-source/target/release/rakclient
